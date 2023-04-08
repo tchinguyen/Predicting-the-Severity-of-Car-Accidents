@@ -1,0 +1,378 @@
+---
+title: "Stats 101C -- Final Project"
+output: pdf_document
+date: "2022-11-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+- Step 1: Read data
+
+```{r}
+acc.train.data = read.csv("Acctrain.csv") # training data set
+acc.test.data = read.csv("AcctestNoY.csv") # testing data set
+population = read.csv("file1.csv")[,-1]  # states polulation data set from internet
+```
+
+- Step 2: EDA 
+
+```{r fig.cap = "An amazing plot"}
+library(dplyr)
+### NAs explore
+## for training data
+colSums(is.na(acc.train.data))
+sum(is.na(acc.train.data))
+
+#### Graph of missing values
+library(ggplot2)
+library(naniar)
+gg_miss_var(acc.train.data, show_pct = TRUE) + labs(title ="Percentage of missing value")
+
+## for testing data
+colSums(is.na(acc.test.data))
+sum(is.na(acc.test.data))
+
+### Accidents by severity"
+options(repr.plot.width = 20, repr.plot.height = 8)
+df = acc.train.data
+  df %>%
+    group_by(Severity) %>%
+    summarise(percentage = n() / nrow(acc.train.data) *100) %>% 
+    ggplot() + 
+    geom_col(mapping = aes(x=Severity, y=percentage, fill=Severity)) +
+    labs(x = "Severity", y="%", title ="Accidents by severity") +
+    theme(text = element_text(size=18))
+### Density plots
+   ggplot(acc.train.data, aes(Wind_Speed.mph., color = Severity)) + geom_density()
+   ggplot(acc.train.data, aes(Start_Lat, color = Severity)) + geom_density() +
+     labs(title ="Desity plot Start_Lat variable")
+   
+```
+- Step 3: Impute missing variables using mice function
+
+```{r}
+## For training data
+library(mice)
+acc.train.data.impute = mice(acc.train.data, m = 5, maxit = 50, method = "pmm", seed =500)
+acc.train.data.complete= complete(acc.train.data.impute,1)
+colSums(is.na(acc.train.data.complete)) ## check missing data again
+sum(is.na(acc.train.data.complete))
+
+## For testing data
+acc.test.data.impute = mice(acc.test.data, m = 5, maxit = 50, method = "pmm", seed =500)
+acc.test.data.complete= complete(acc.test.data.impute,1)
+colSums(is.na(acc.test.data.complete)) ## check missing data again
+sum(is.na(acc.test.data.complete))
+```
+
+
+- Step 5: Merge data
+
+```{r}
+#### Merge training data with population dataset
+library(dplyr)
+library(ggplot2)
+
+names(population)[7]<- "County"
+names(population)[8]<- "State"
+acc.train.data.complete$County<- tolower(acc.train.data.complete$County)
+join.data.train <- acc.train.data.complete%>% left_join(population)
+
+##### Merge testing data with population dataset
+
+names(population)[7]<- "County" # Change the column's names so that they have the same name
+names(population)[8]<- "State"
+acc.test.data.complete$County<- tolower(acc.test.data.complete$County)
+join.data.test <- acc.test.data.complete %>% left_join(population)
+
+```
+
+- Step 6: Feature Engineering 
+
+```{r}
+### For training data
+library(qdapTools)
+library(tidyverse)
+####### Spliting time fron Start_time and End_time of the training dataset
+pattern <- "\\d{2}:\\d{2}:\\d{2}"
+join.data.train$new_start <- str_match(join.data.train$Start_Time, pattern)
+join.data.train$new_end <- str_match(join.data.train$End_Time, pattern)
+join.data.train$new_start <- hms2sec(join.data.train$new_start) ### Convert new_start time to second
+join.data.train$new_end <- hms2sec(join.data.train$new_end) ### Convert end_time to second
+
+## Create duration (time each accident took place) 
+join.data.train$duration <- abs(join.data.train$new_end - join.data.train$new_start)/60 ## divided by 60 to get minute
+
+###### Spliting date from Start_time and End_time
+pattern.2 = "\\d{4}-\\d{2}-\\d{2}"
+join.data.train$new_date <- as.vector(str_match(join.data.train$Start_Time, pattern.2))
+
+### Spliting month form new_date
+patter.3 = "\\b\\d{2}\\b"
+join.data.train$month = as.factor(str_match(join.data.train$new_date, patter.3))
+### Spliting year form new_date
+patter.4 = "\\d{4}"
+join.data.train$year = as.factor(str_match(join.data.train$new_date, patter.4))
+
+
+#### For testing data
+####### Spliting time fron Start_time and End_time of the testing dataset
+pattern <- "\\d{2}:\\d{2}:\\d{2}"
+
+join.data.test$new_start <- str_match(join.data.test$Start_Time, pattern)
+join.data.test$new_end <- str_match(join.data.test$End_Time, pattern)
+join.data.test$new_start <- hms2sec(join.data.test$new_start) ### Convert new_start time to second
+join.data.test$new_end <- hms2sec(join.data.test$new_end) ### Convert new_start time to second
+## Create duration (time each accident took place) 
+join.data.test$duration <- abs(join.data.test$new_end - join.data.test$new_start)/60 ## divided by 60 to get minute
+
+###### Spliting date from Start_time and End_time
+pattern.2 = "\\d{4}-\\d{2}-\\d{2}"
+join.data.test$new_date <- as.vector(str_match(join.data.test$Start_Time, pattern.2))
+
+### Spliting month form new_date
+patter.3 = "\\b\\d{2}\\b"
+join.data.test$month = as.factor(str_match(join.data.test$new_date, patter.3))
+
+### Spliting year form new_date
+patter.4 = "\\d{4}"
+join.data.test$year = as.factor(str_match(join.data.test$new_date, patter.4))
+
+
+### Creating new variables based on Description predictor in which using the common words that appears the most in the description variable
+## For training data
+join.data.train$is.closed  = as.factor(str_detect(join.data.train$Description, "[Cc]losed"))
+join.data.train$is.blocked = as.factor(str_detect(join.data.train$Description, "[Bb]locked"))
+join.data.train$is.accident = as.factor(str_detect(join.data.train$Description, "[Aa]ccident"))
+join.data.train$is.road = as.factor(str_detect(join.data.train$Description, "[Rr]oad"))
+join.data.train$is.lanes = as.factor(str_detect(join.data.train$Description, c("lane","lanes")))
+
+
+### For testing data
+
+join.data.test$is.closed  = as.factor(str_detect(join.data.test$Description, "[Cc]losed"))
+join.data.test$is.blocked = as.factor(str_detect(join.data.test$Description, "[Bb]locked"))
+join.data.test$is.accident = as.factor(str_detect(join.data.test$Description, "[Aa]ccident"))
+join.data.test$is.road = as.factor(str_detect(join.data.test$Description, "[Rr]oad"))
+join.data.test$is.lanes = as.factor(str_detect(join.data.test$Description, c("lane","lanes")))
+
+
+#### The graph of Car accidents by months: This chart shows that the number of traffic accidents tends to increase significantly at the end of the year (holiday season).  
+ggplot(join.data.train,aes(month,group=Severity,color=Severity,fill=Severity)) +
+  geom_bar() +
+  labs(x = "Month", y="Number of car accidents", title ="Car accidents by months") 
+
+### The graph of car accidents by State: Some states have high numbers of car accident such as CA, FL, TX, OR
+ggplot(acc.train.data.complete,aes(State,group=Severity, fill = Severity)) +
+  geom_bar() +
+  labs(x = "State", y="Number of car accidents", title ="Car accidents by State") 
+```
+
+- Step 7: Remove insignificant variables and variables having missing values
+
+```{r}
+remove_cols_1 = c("Weather_Timestamp","Airport_Code", "Timezone","Walk_County","City","Description","Zipcode","Wind_Direction", "Wind_Speed.mph.", "Visibility.mi.",  "Sunrise_Sunset", "Civil_Twilight","Nautical_Twilight","Astronomical_Twilight", "index", "Transit_County", "Wind_Chill.F.", "End_Lat", "End_Lng", "Weather_Condition", "MedianHouseholdIncome_County","Start_Time", "End_Time", "Country", "Street", "County", "new_date", "is.blocked")
+### For training dataset
+new_join.data.train <- join.data.train[ ,! colnames(join.data.train) %in% c(remove_cols_1)]
+dim(new_join.data.train)
+### For testing dataset
+new_join.data.test <-join.data.test[ ,! colnames(join.data.test) %in% c(remove_cols_1)]
+dim(new_join.data.test)
+
+
+```
+
+- Step 8: Merge fatal data
+
+```{r}
+#### For training data
+fatal=read.table("fatal_crashes_by_year.txt",header = TRUE, sep = "",dec = ".")
+ob_2021 = matrix(c(2021, mean(fatal$Total)), ncol = 2)
+colnames(ob_2021) <- colnames(fatal)
+fatal_new = rbind(fatal,ob_2021)
+names(fatal_new) <-c("year", "Fatal_total")
+fatal_new$year <- as.factor(fatal_new$year)
+
+new_join.data.train =  new_join.data.train %>% left_join(fatal_new)
+
+### For testing data
+new_join.data.test = new_join.data.test %>%  left_join(fatal_new)
+```
+
+
+
+- Step 9: Encode variables (convert `Severity`, `Side`, `State`, `year` to factors)
+
+```{r}
+### For training data
+new_join.data.train$Severity <- as.factor(new_join.data.train$Severity)
+new_join.data.train$Side <- as.factor(new_join.data.train$Side)
+new_join.data.train$State <- as.factor(new_join.data.train$State)
+new_join.data.train$year <- as.factor(new_join.data.train$year)
+
+### For testing data
+new_join.data.test$Side <- as.factor(new_join.data.test$Side)
+new_join.data.test$State <- as.factor(new_join.data.test$State)
+new_join.data.test$year <- as.factor(new_join.data.test$year)
+```
+
+- Step 9: To `Population_County`, `Drive_County`, `Humidity...`, `Pressure.in.` assign the median to NAs 
+
+```{r}
+### For training data
+
+new_join.data.train$Population_County <- ifelse(is.na(new_join.data.train$Population_County),median(new_join.data.train$Population_County ,na.rm = TRUE),new_join.data.train$Population_County)
+new_join.data.train$Drive_County<- ifelse(is.na(new_join.data.train$Drive_County),median(new_join.data.train$Drive_County,na.rm = TRUE),new_join.data.train$Drive_County)
+new_join.data.train$Humidity... <- ifelse(is.na(new_join.data.train$Humidity...),median(new_join.data.train$Humidity...,na.rm = TRUE),new_join.data.train$Humidity...)
+new_join.data.train$Pressure.in. <- ifelse(is.na(new_join.data.train$Pressure.in.),median(new_join.data.train$Pressure.in.,na.rm = TRUE),new_join.data.train$Pressure.in.)
+
+
+
+### For testing data
+
+new_join.data.test$Population_County <- ifelse(is.na(new_join.data.test$Population_County),median(new_join.data.test$Population_County ,na.rm = TRUE),new_join.data.test$Population_County)
+new_join.data.test$Drive_County<- ifelse(is.na(new_join.data.test$Drive_County),median(new_join.data.test$Drive_County,na.rm = TRUE),new_join.data.test$Drive_County)
+new_join.data.test$Humidity... <- ifelse(is.na(new_join.data.test$Humidity...),median(new_join.data.test$Humidity...,na.rm = TRUE),new_join.data.test$Humidity...)
+new_join.data.test$Pressure.in. <- ifelse(is.na(new_join.data.test$Pressure.in.),median(new_join.data.test$Pressure.in.,na.rm = TRUE),new_join.data.test$Pressure.in.)
+
+```
+
+- Step 10: Remove more logical predictors since they do not help in increasing accuracy
+
+```{r}
+remove_cols_2  =  c("Bump", "Roundabout", "Amenity", "Give_Way", "No_Exit", "Traffic_Calming", "Turning_Loop", "Stop", "Station", "Side", "Railway", "Traffic_Signal", "Crossing", "Junction", "Drive_County")
+
+### For training dataset
+new_join.data.train2 <- new_join.data.train[ ,! colnames(new_join.data.train) %in% c(remove_cols_2)]
+dim(new_join.data.train2)
+### For testing dataset
+new_join.data.test2 <- new_join.data.test[ ,! colnames(new_join.data.test) %in% c(remove_cols_2)]
+dim(new_join.data.test2)
+
+```
+
+- Step 11: Apply random forest method
+
+    - i. Model of 18 predictors
+
+```{r}
+set.seed(1128)
+library(randomForest)
+model.rf.18 <- randomForest(Severity~.,data = new_join.data.train2, ntree= 200, mtry = 4 ,importance = T, na.action = na.omit)
+model.rf.18 ## error rate  =  0.0552
+varImpPlot(model.rf.18)
+imp <- round(importance(model.rf.18), 2)
+imp_df <- data.frame(sort(imp[,3], decreasing = T))
+colnames(imp_df) <- "Importance"
+
+ggplot(data = imp_df, aes(x = reorder(rownames(imp_df), + Importance), 
+                           y = Importance)) + 
+   geom_bar(stat = "identity", position="dodge", fill = "gold") +
+   coord_flip() +
+   labs(y = "Importance", x = "Features" )
+  
+
+
+imp_df_2 <- data.frame(sort(imp[,4], decreasing = T))
+colnames(imp_df_2) <- c("Importance")
+ggplot(data = imp_df_2, aes(x = reorder(rownames(imp_df_2), + Importance), 
+                           y = Importance)) + 
+   geom_bar(stat = "identity", position="dodge", fill = "navy blue") +
+   coord_flip() +
+   labs(y = "Importance", x = "Features" )
+
+```
+
+
+
+
+      - ii. Model of 11 predictors
+
+```{r}
+set.seed(1128)
+library(randomForest)
+### Apply random forest to the training data
+i_train = names(new_join.data.train2)%in% c("is.closed", "is.road", "State", "year", "duration", "month", "new_start" , "new_end", "Distance.mi.", "Pressure.in.", "Severity")
+i_test = names(new_join.data.test2)%in% c("is.closed", "is.road", "State", "year", "duration", "month",  "Distance.mi.", "Pressure.in.", "new_start" , "new_end")
+model.rf.10 <-randomForest(Severity~.,data = new_join.data.train2[, i_train], ntree= 200, mtry = 4 ,importance= T ,na.action = na.omit)
+model.rf.10
+varImpPlot(model.rf.10) ## error rate = 0.0602
+round(importance(model.rf.10), 2)
+rand.pred = predict(model.rf.10, newdata = new_join.data.test2[,i_test], type= "class")
+### Predict for testing data
+y.test = as.character(rand.pred)
+
+```
+
+
+      - ii. Model of 6 predictors
+
+```{r}
+set.seed(1128)
+library(randomForest)
+### Apply random forest to the training data
+i_train = names(new_join.data.train2)%in% c("is.closed", "is.road", "State", "year", "duration", "Pressure.in.", "Severity")
+i_test = names(new_join.data.test2)%in% c("is.closed", "is.road", "State", "year", "duration", "Pressure.in.")
+model.rf.6 <-randomForest(Severity~.,data = new_join.data.train2[, i_train], ntree= 200, mtry = 4 ,importance= T ,na.action = na.omit)
+model.rf.6
+varImpPlot(model.rf.6) ## error rate = 0.0671
+round(importance(model.rf.6), 2)
+rand.pred = predict(model.rf.6, newdata = new_join.data.test2[,i_test], type= "class")
+### Predict for testing data
+y.test = as.character(rand.pred)
+
+```
+
+
+
+
+
+```{r}
+### Graph of number of important predictors vs error rate
+error_df = data.frame(num_var = c(6, 11, 18), error = c(0.0671, 0.0602, 0.0552))
+ggplot(data= error_df, aes(x=num_var, y=error, group=1)) +
+  geom_line(color="red")+
+  geom_point() +
+  labs(x = "Number of important predictors", y="Error rate", title = "Misclassification rates of models with different numbers of predictors") 
+
+
+#### Graph of geographic dispersion of accidents by severity levels
+TXmap = ggplot(data = acc.train.data.complete, mapping = aes(x=Start_Lng, y=Start_Lat, color=factor(Severity))) +
+  geom_point(size = .5) +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  labs( tilte = "Geographic dispersion of accidents by severity levels")
+TXmap
+
+
+```
+
+- Step 12: Apply GLM method
+
+```{r}
+set.seed(1128)
+glm.fits = glm(Severity ~., data = new_join.data.train2, family =  binomial())
+summary(glm.fits)
+glm.probs = predict(glm.fits, data = new_join.data.train2, type="response")
+glm.pred.train = rep("SEVERE", length(glm.probs))
+glm.pred.train[glm.probs < 0.5] = "MILD"
+# Confusion matrices for training data set
+table(glm.pred.train, new_join.data.train2$Severity)
+# misclassification rates
+mean(glm.pred.train == new_join.data.train2$Severity)
+mean(glm.pred.train != new_join.data.train2$Severity) ## error rate = 0.068
+
+```
+
+
+## copy of data set
+```{r}
+# write.csv(new_join.data.train2, file = "new_join.data.train2.csv", row.names = FALSE)
+# write.csv(new_join.data.test2, file = "new_join.data.test2.csv", row.names = FALSE)
+# test <- read.csv("new_join.data.test2.csv")
+# test.2 <- read.csv("new_join.data.train2.csv")
+```
+
+
