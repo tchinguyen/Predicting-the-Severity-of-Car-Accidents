@@ -15,22 +15,22 @@ The most common cause of death of teenagers and younger adults is a vehicle acci
 
 ## Key Achievements
 
-Built a model that can predict the severity of a car accident with an accuracy of 94.48%
-Ranked second among 12 teams in a data analysis competition
-Analyzed a countrywide car accident dataset that covers 49 states of the USA and contains 2.8 million accident records
-Identified important variables using the random forest method
++ Built a model that can predict the severity of a car accident with an accuracy of 94.48%.
++ Ranked second among 12 teams in a data analysis competition.
++ Analyzed a countrywide car accident dataset that covers 49 states of the USA and contains 2.8 million accident records.
++ Identified important variables using the random forest method.
 
 ## Key Skills Demonstrated
-Data analysis and visualization
-Machine learning and predictive modeling
-Random forest method for feature selection
-Data preprocessing and cleaning
-Statistical analysis and interpretation
++ Data analysis and visualization.
++ Machine learning and predictive modeling.
++ Random forest method for feature selection.
++ Data preprocessing and cleaning.
++ Statistical analysis and interpretation.
 
 
 ## Future Work
 
-Improve the accuracy of the model
-Incorporate real-time data to make predictions more accurate and up-to-date
-Conduct further analysis to identify trends and patterns in car accidents
-Build a web application that can provide real-time car accident severity predictions based on user inputs.
++ Improve the accuracy of the model.
++ Incorporate real-time data to make predictions more accurate and up-to-date.
++ Conduct further analysis to identify trends and patterns in car accidents.
++ Build a web application that can provide real-time car accident severity predictions based on user inputs.
